@@ -20,48 +20,64 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def train(opt):
+    print(opt)
     """ dataset preparation """
     if not opt.data_filtering_off:
         print('Filtering the images containing characters which are not in opt.character')
         print('Filtering the images whose label is longer than opt.batch_max_length')
         # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
 
-    opt.select_data = opt.select_data.split('-')
+    opt.select_data = opt.select_data.split('-') #
     opt.batch_ratio = opt.batch_ratio.split('-')
+
+    # 학습 데이터셋
     train_dataset = Batch_Balanced_Dataset(opt)
 
     log = open(f'./saved_models/{opt.exp_name}/log_dataset.txt', 'a')
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD)
+    print(f'AlignCollate_valid:{AlignCollate_valid}')
+
+    # 검증 데이터셋
     valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
+
+    # 검증 데이터로더
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=opt.batch_size,
         shuffle=True,  # 'True' to check training progress with validation function.
         num_workers=int(opt.workers),
-        collate_fn=AlignCollate_valid, pin_memory=True)
+        collate_fn=AlignCollate_valid,  # label과  output텐서가 동일한 형태로 하기 위해
+        pin_memory=True)
     log.write(valid_dataset_log)
     print('-' * 80)
     log.write('-' * 80 + '\n')
     log.close()
-    
+
+
     """ model configuration """
-    if 'CTC' in opt.Prediction:
-        if opt.baiduCTC:
+    if 'CTC' in opt.Prediction: # default: 'CTC'
+        if opt.baiduCTC:    # default: False
             converter = CTCLabelConverterForBaiduWarpctc(opt.character)
         else:
-            converter = CTCLabelConverter(opt.character)
+            converter = CTCLabelConverter(opt.character)    # opt.character: '0123456789abcdefghijklmnopqrstuvwxyz'
     else:
         converter = AttnLabelConverter(opt.character)
     opt.num_class = len(converter.character)
+    print(f'opt.num_class: {opt.num_class}')
 
-    if opt.rgb:
+    if opt.rgb: # default: False
         opt.input_channel = 3
-    model = Model(opt)
-    print('model input parameters', opt.imgH, opt.imgW, opt.num_fiducial, opt.input_channel, opt.output_channel,
-          opt.hidden_size, opt.num_class, opt.batch_max_length, opt.Transformation, opt.FeatureExtraction,
-          opt.SequenceModeling, opt.Prediction)
 
+    # 학습 모델
+    model = Model(opt)
+    # print("Model:")
+    # print(model)
+    print(f'model input parameters: imgH:{opt.imgH}, imgW:{opt.imgW}, num_fiducial:{opt.num_fiducial}, input_channel:{opt.input_channel}, output_channel:{opt.output_channel}, hidden_size:{opt.hidden_size}, num_class:{opt.num_class}, batch_max_length:{opt.batch_max_length}, Transformation:{opt.Transformation}, FeatureExtraction:{opt.FeatureExtraction}, SequenceModeling:{opt.SequenceModeling}, Prediction:{opt.Prediction}')
+
+    # 모델 초기 파라미터들화 출력 및 weight 초기화
     # weight initialization
     for name, param in model.named_parameters():
+        # print(f'model.named_parameters().name:{name}')
+        # print(f'model.named_parameters().param:{param}')
         if 'localization_fc2' in name:
             print(f'Skip {name} as it is already initialized')
             continue
@@ -77,28 +93,34 @@ def train(opt):
 
     # data parallel for multi-GPU
     model = torch.nn.DataParallel(model).to(device)
-    model.train()
-    if opt.saved_model != '':
+
+    model.train()   # 학습 모드로 설정 : 학습용 피라미터 사용
+
+    if opt.saved_model != '':   # saved_model default: ''
         print(f'loading pretrained model from {opt.saved_model}')
         if opt.FT:
             model.load_state_dict(torch.load(opt.saved_model), strict=False)
         else:
             model.load_state_dict(torch.load(opt.saved_model))
+
     print("Model:")
     print(model)
 
+
+    # Loss 함수 세팅
     """ setup loss """
-    if 'CTC' in opt.Prediction:
-        if opt.baiduCTC:
-            # need to install warpctc. see our guideline.
-            from warpctc_pytorch import CTCLoss 
-            criterion = CTCLoss()
-        else:
+    if 'CTC' in opt.Prediction: # default: 'CTC'
+        # if opt.baiduCTC:    # default: False
+        #     # need to install warpctc. see our guideline.
+        #     from warpctc_pytorch import CTCLoss
+        #     criterion = CTCLoss()팅
+        # else:
             criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     else:
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
     # loss averager
     loss_avg = Averager()
+
 
     # filter that only require gradient decent
     filtered_parameters = []
@@ -117,9 +139,11 @@ def train(opt):
     print("Optimizer:")
     print(optimizer)
 
+
     """ final options """
     # print(opt)
-    with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:
+    # 파라미터 기
+    with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:   # opt.exp_name: 'None-VGG-BiLSTM-CTC-Seed1111'
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
         for k, v in args.items():
@@ -127,6 +151,7 @@ def train(opt):
         opt_log += '---------------------------------------\n'
         print(opt_log)
         opt_file.write(opt_log)
+
 
     """ start training """
     start_iter = 0
@@ -141,6 +166,7 @@ def train(opt):
     best_accuracy = -1
     best_norm_ED = -1
     iteration = start_iter
+
 
     while(True):
         # train part
@@ -172,7 +198,7 @@ def train(opt):
         loss_avg.add(cost)
 
         # validation part
-        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0' 
+        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0'
             elapsed_time = time.time() - start_time
             # for log
             with open(f'./saved_models/{opt.exp_name}/log_train.txt', 'a') as log:
@@ -274,20 +300,25 @@ if __name__ == '__main__':
                         help='the number of output channel of Feature extractor')
     parser.add_argument('--hidden_size', type=int, default=256, help='the size of the LSTM hidden state')
 
+    # 입력받은 인자값을 otp에 저장
     opt = parser.parse_args()
 
+    # exp_name 설정
     if not opt.exp_name:
         opt.exp_name = f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
         opt.exp_name += f'-Seed{opt.manualSeed}'
-        # print(opt.exp_name)
+        print(opt.exp_name)
 
+    # 저장 디렉토리 생성
     os.makedirs(f'./saved_models/{opt.exp_name}', exist_ok=True)
 
     """ vocab / character number configuration """
     if opt.sensitive:
         # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char). '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+        # opt.character = string.printable[:-6]     # '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\x0b\x0c'
 
+    # 랜덤 씨드 고정
     """ Seed and GPU setting """
     # print("Random Seed: ", opt.manualSeed)
     random.seed(opt.manualSeed)
@@ -295,11 +326,11 @@ if __name__ == '__main__':
     torch.manual_seed(opt.manualSeed)
     torch.cuda.manual_seed(opt.manualSeed)
 
-    cudnn.benchmark = True
-    cudnn.deterministic = True
-    opt.num_gpu = torch.cuda.device_count()
+    cudnn.benchmark = True  # 내장된 cudnn 자동 튜너를 활성화하여, 하드웨어에 맞게 최상의 알고리즘(텐서 크기나 conv 연산에 맞게) 찾음 / 입력 이미지 크기가 자주 변하지 않으면, 초기 시간이 소요되지만 일반적으로 더 빠른 런타임 효과를 볼 수 있다.
+    cudnn.deterministic = True # 랜덤 씨드를 고정하는 것과 유사하게, 실험 재현을 가능하게 해준다.
+    opt.num_gpu = torch.cuda.device_count() # 가능한 cuda 디바이스 개수
     # print('device count', opt.num_gpu)
-    if opt.num_gpu > 1:
+    if opt.num_gpu > 1: # 가능한 디바이스가 2개 이상이
         print('------ Use multi-GPU setting ------')
         print('if you stuck too long time with multi-GPU setting, try to set --workers 0')
         # check multi-GPU issue https://github.com/clovaai/deep-text-recognition-benchmark/issues/1
@@ -314,4 +345,4 @@ if __name__ == '__main__':
         opt.num_iter = int(opt.num_iter / opt.num_gpu)
         """
 
-    train(opt)
+    train(opt)  # 실험 함수 호출

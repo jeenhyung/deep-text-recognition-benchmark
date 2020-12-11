@@ -26,6 +26,7 @@ class Model(nn.Module):
 
     def __init__(self, opt):
         super(Model, self).__init__()
+        print(f'Model.__init__(opt:{opt})')
         self.opt = opt
         self.stages = {'Trans': opt.Transformation, 'Feat': opt.FeatureExtraction,
                        'Seq': opt.SequenceModeling, 'Pred': opt.Prediction}

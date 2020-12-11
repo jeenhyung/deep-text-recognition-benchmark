@@ -66,6 +66,7 @@ class Batch_Balanced_Dataset(object):
                 num_workers=int(opt.workers),
                 collate_fn=_AlignCollate, pin_memory=True)
             self.data_loader_list.append(_data_loader)
+            print('data_loader_list:', self.data_loader_list)
             self.dataloader_iter_list.append(iter(_data_loader))
 
         Total_batch_size_log = f'{dashed_line}\n'
@@ -129,7 +130,7 @@ def hierarchical_dataset(root, opt, select_data='/'):
 class LmdbDataset(Dataset):
 
     def __init__(self, root, opt):
-
+        print(f'root:{root}')
         self.root = root
         self.opt = opt
         self.env = lmdb.open(root, max_readers=32, readonly=True, lock=False, readahead=False, meminit=False)
@@ -290,11 +291,13 @@ class NormalizePAD(object):
 class AlignCollate(object):
 
     def __init__(self, imgH=32, imgW=100, keep_ratio_with_pad=False):
+        print('AlignCollate __init__')
         self.imgH = imgH
         self.imgW = imgW
         self.keep_ratio_with_pad = keep_ratio_with_pad
 
     def __call__(self, batch):
+        print('AlignCollate __call__')
         batch = filter(lambda x: x is not None, batch)
         images, labels = zip(*batch)
 
