@@ -17,32 +17,43 @@ import torchvision.transforms as transforms
 class Batch_Balanced_Dataset(object):
 
     def __init__(self, opt):
+        print(f'Batch_Balanced_Dataset().__init__()')
         """
         Modulate the data ratio in the batch.
         For example, when select_data is "MJ-ST" and batch_ratio is "0.5-0.5",
         the 50% of the batch is filled with MJ and the other 50% of the batch is filled with ST.
         """
+
+        # 로그 기록
         log = open(f'./saved_models/{opt.exp_name}/log_dataset.txt', 'a')
         dashed_line = '-' * 80
         print(dashed_line)
         log.write(dashed_line + '\n')
         print(f'dataset_root: {opt.train_data}\nopt.select_data: {opt.select_data}\nopt.batch_ratio: {opt.batch_ratio}')
         log.write(f'dataset_root: {opt.train_data}\nopt.select_data: {opt.select_data}\nopt.batch_ratio: {opt.batch_ratio}\n')
+
+        # 길이 같은지 검사
         assert len(opt.select_data) == len(opt.batch_ratio)
 
+        # 텍스트 길이가 다를 수 있어서 오프셋을 생성해 길이를 같게 만들어주는 역할.
         _AlignCollate = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD)
+
         self.data_loader_list = []
         self.dataloader_iter_list = []
         batch_size_list = []
         Total_batch_size = 0
-        for selected_d, batch_ratio_d in zip(opt.select_data, opt.batch_ratio):
-            _batch_size = max(round(opt.batch_size * float(batch_ratio_d)), 1)
+
+        for selected_d, batch_ratio_d in zip(opt.select_data, opt.batch_ratio): # select_data: ['MJ', 'ST'], batch_ratio: ['0.5', '0.5'] => [('MJ', '0.5), ('ST', '0.5)]
+            _batch_size = max(round(opt.batch_size * float(batch_ratio_d)), 1)  # max(round(192 * 0.5), 1)
+            print(f'_batch_size:{_batch_size}') # 96
             print(dashed_line)
             log.write(dashed_line + '\n')
+
             _dataset, _dataset_log = hierarchical_dataset(root=opt.train_data, opt=opt, select_data=[selected_d])
             total_number_dataset = len(_dataset)
-            log.write(_dataset_log)
 
+            log.write(_dataset_log)
+            
             """
             The total number of data can be modified with opt.total_data_usage_ratio.
             ex) opt.total_data_usage_ratio = 1 indicates 100% usage, and 0.2 indicates 20% usage.
@@ -63,8 +74,10 @@ class Batch_Balanced_Dataset(object):
             _data_loader = torch.utils.data.DataLoader(
                 _dataset, batch_size=_batch_size,
                 shuffle=True,
-                num_workers=int(opt.workers),
-                collate_fn=_AlignCollate, pin_memory=True)
+                num_workers=0, # int(opt.workers),
+                collate_fn=_AlignCollate,  # collate_fn 의 입력은 그 크기가 batch_size인 텐서들의 리스트이며, collate_fn 은 이들을 미니배치로 묶는 역할
+                pin_memory=True
+            )
             self.data_loader_list.append(_data_loader)
             print('data_loader_list:', self.data_loader_list)
             self.dataloader_iter_list.append(iter(_data_loader))
@@ -105,35 +118,57 @@ def hierarchical_dataset(root, opt, select_data='/'):
     """ select_data='/' contains all sub-directory of root directory """
     dataset_list = []
     dataset_log = f'dataset_root:    {root}\t dataset: {select_data[0]}'
-    print(dataset_log)
+    print(dataset_log)  # 'dataset_root:    data_lmdb_release/training      dataset: 'MJ'
+
+    # root: 'data_lmdb_release/training'
+    # select_data: ['MJ', 'ST']
     dataset_log += '\n'
+
+    # 폴더 탐색
     for dirpath, dirnames, filenames in os.walk(root+'/'):
+        print(f'dirpath:{dirpath}, dirnames:{dirnames}, filenames:{filenames}')
+
         if not dirnames:
+            print(f'[not dirnames]')
+
             select_flag = False
+
+            # 선텍한 폴더에 진입했을 경우
             for selected_d in select_data:
                 if selected_d in dirpath:
-                    select_flag = True
+                    select_flag = True # 선택 플래그 True
                     break
+            
+            print(f'select_flag:{select_flag}') 
 
-            if select_flag:
-                dataset = LmdbDataset(dirpath, opt)
+            if select_flag: # 선택되었다면,
+                print(f'[select_flag is true ]')
+
+                # dataset = LmdbDataset(dirpath, opt) # 데이터셋
+            
+                dataset = CustomImageDataset('data/train', opt) # 커스텀 데이터셋
+                raise Exception('spam', 'eggs')
+
                 sub_dataset_log = f'sub-directory:\t/{os.path.relpath(dirpath, root)}\t num samples: {len(dataset)}'
-                print(sub_dataset_log)
+                print(sub_dataset_log)  # sub-directory:  /MJ/MJ_train     num samples: 7224586
                 dataset_log += f'{sub_dataset_log}\n'
+
                 dataset_list.append(dataset)
 
     concatenated_dataset = ConcatDataset(dataset_list)
+    
+    return concatenated_dataset, dataset_log # 연결된데이터셋, 기록용 로그
 
-    return concatenated_dataset, dataset_log
 
-
+# 데이터셋
 class LmdbDataset(Dataset):
 
     def __init__(self, root, opt):
-        print(f'root:{root}')
+        print(f'LmdbDataset.__init__(root:{root})')   # root:data_lmdb_release/training/MJ/MJ_train
         self.root = root
         self.opt = opt
         self.env = lmdb.open(root, max_readers=32, readonly=True, lock=False, readahead=False, meminit=False)
+
         if not self.env:
             print('cannot create lmdb from %s' % (root))
             sys.exit(0)
@@ -157,9 +192,11 @@ class LmdbDataset(Dataset):
                 """
                 self.filtered_index_list = []
                 for index in range(self.nSamples):
+                    # print(f'index:{index}')
                     index += 1  # lmdb starts with 1
                     label_key = 'label-%09d'.encode() % index
                     label = txn.get(label_key).decode('utf-8')
+                    # print(f'label:{label}')
 
                     if len(label) > self.opt.batch_max_length:
                         # print(f'The length of the label is longer than max_length: length
@@ -174,12 +211,15 @@ class LmdbDataset(Dataset):
 
                     self.filtered_index_list.append(index)
 
+                print(f'self.filtered_index_list length: {len(self.filtered_index_list)}')
                 self.nSamples = len(self.filtered_index_list)
 
     def __len__(self):
         return self.nSamples
 
     def __getitem__(self, index):
+        print(f'LmdbDataset.__getitem__(index:{index})')
+
         assert index <= len(self), 'index range error'
         index = self.filtered_index_list[index]
 
@@ -214,7 +254,68 @@ class LmdbDataset(Dataset):
             out_of_char = f'[^{self.opt.character}]'
             label = re.sub(out_of_char, '', label)
 
+        print(f'LmdbDataset.__getitem__() img:{img.size}, label:{label}') # img:(109, 31), label:falsehoods
+
         return (img, label)
+
+
+from numpy import genfromtxt
+
+class CustomImageDataset(Dataset):
+    def read_data_set(self, opt):
+        print(f'CustomImageDataset().read_data_set()')
+
+        all_img_files = []
+        all_labels = []
+
+        my_data = genfromtxt(f'{self.data_set_path}/labels.txt', dtype=None, delimiter=',')
+        print(f'my_data:{my_data}')
+        print(f'my_data.type:{type(my_data)}')   # <class 'numpy.ndarray'>
+        print(f'my_data.shape:{my_data.shape}')     # (60000, 2)
+        
+        for image_name, image_label in my_data:
+            
+            
+
+        class_names = os.walk(self.data_set_path).__next__()[1] # 폴더명이 클래스네임으로 예시 ['test', 'train', 'val']
+
+        print(f'class_names:{class_names}')
+        raise Exception('spam', 'eggs')
+
+        for index, class_name in enumerate(class_names):
+            label = index
+            img_dir = os.path.join(self.data_set_path, class_name)
+            img_files = os.walk(img_dir).__next__()[2]
+
+            for img_file in img_files:
+                img_file = os.path.join(img_dir, img_file)
+                img = Image.open(img_file)
+                if img is not None:
+                    all_img_files.append(img_file)
+                    all_labels.append(label)
+
+        return all_img_files, all_labels, len(all_img_files), len(class_names)
+
+    def __init__(self, data_set_path, opt, transforms=None):
+        print(f'CustomImageDataset().__init__(data_set_path:{data_set_path}, transforms:{transforms})')
+        self.data_set_path = data_set_path  # 'data/training'
+        self.opt = opt
+        self.image_files_path, self.labels, self.length, self.num_classes = self.read_data_set(self.opt)
+        self.transforms = transforms
+        
+
+    def __getitem__(self, index):
+        image = Image.open(self.image_files_path[index])
+        image = image.convert("RGB")
+
+        if self.transforms is not None:
+            image = self.transforms(image)
+
+        return {'image': image, 'label': self.labels[index]}
+
+    def __len__(self):
+        return self.length
+
 
 
 class RawDataset(Dataset):
@@ -257,11 +358,13 @@ class RawDataset(Dataset):
 class ResizeNormalize(object):
 
     def __init__(self, size, interpolation=Image.BICUBIC):
+        print(f'ResizeNormalize().__init__(size:{size}, interpolation:{interpolation}') # size: (100, 32), interpolation: 3
         self.size = size
         self.interpolation = interpolation
         self.toTensor = transforms.ToTensor()
 
     def __call__(self, img):
+        print(f'ResizeNormalize().__call__(img:{img})')
         img = img.resize(self.size, self.interpolation)
         img = self.toTensor(img)
         img.sub_(0.5).div_(0.5)
@@ -291,15 +394,19 @@ class NormalizePAD(object):
 class AlignCollate(object):
 
     def __init__(self, imgH=32, imgW=100, keep_ratio_with_pad=False):
-        print('AlignCollate __init__')
+        print(f'AlignCollate __init__(imgH:{imgH}, imgW:{imgW}, keep_ratio_with_pad:{keep_ratio_with_pad}')
         self.imgH = imgH
         self.imgW = imgW
         self.keep_ratio_with_pad = keep_ratio_with_pad
 
     def __call__(self, batch):
-        print('AlignCollate __call__')
-        batch = filter(lambda x: x is not None, batch)
-        images, labels = zip(*batch)
+        print(f'AlignCollate __call__(batch:{batch}')
+        batch = filter(lambda x: x is not None, batch) # batch 원소 하나씩 x에 대입 후 None이 아닌 것들만 추출.
+        
+        # zip(이터러블): 동일한 개수로 이루어진 자료형을 묶어주는 역할, [1,2],[3,4] => [(1,3), (2,4)]
+        images, labels = zip(*batch) # 
+        print(f'images.length:{len(images)}') # 96
+        print(f'labels.length:{len(labels)}') # 96
 
         if self.keep_ratio_with_pad:  # same concept with 'Rosetta' paper
             resized_max_w = self.imgW
@@ -322,10 +429,14 @@ class AlignCollate(object):
             image_tensors = torch.cat([t.unsqueeze(0) for t in resized_images], 0)
 
         else:
-            transform = ResizeNormalize((self.imgW, self.imgH))
-            image_tensors = [transform(image) for image in images]
+            transform = ResizeNormalize((self.imgW, self.imgH)) # 리사이즈 정규화
+            image_tensors = [transform(image) for image in images] # 각각의 이미지들을 정규화해 텐서로 저장
+            print(f'image_tensors.length:{len(image_tensors)}') # 96
+            print(f'image_tensors[0].size():{image_tensors[0].size()}') # [1, 32, 100]
+            
             image_tensors = torch.cat([t.unsqueeze(0) for t in image_tensors], 0)
-
+            print(f'image_tensors.size():{image_tensors.size()}') # [96, 1, 32, 100]
+            
         return image_tensors, labels
 
 

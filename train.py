@@ -17,7 +17,7 @@ from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+import torchvision.utils as vutils
 
 def train(opt):
     print(opt)
@@ -44,7 +44,7 @@ def train(opt):
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=opt.batch_size,
         shuffle=True,  # 'True' to check training progress with validation function.
-        num_workers=int(opt.workers),
+        num_workers=0, # int(opt.workers),
         collate_fn=AlignCollate_valid,  # label과  output텐서가 동일한 형태로 하기 위해
         pin_memory=True)
     log.write(valid_dataset_log)
@@ -142,7 +142,7 @@ def train(opt):
 
     """ final options """
     # print(opt)
-    # 파라미터 기
+    # 파라미터 기록
     with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:   # opt.exp_name: 'None-VGG-BiLSTM-CTC-Seed1111'
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
@@ -167,7 +167,7 @@ def train(opt):
     best_norm_ED = -1
     iteration = start_iter
 
-
+    print(f'------------ 와일문 직전! -------------\n')
     while(True):
         # train part
         image_tensors, labels = train_dataset.get_batch()
@@ -253,6 +253,7 @@ def train(opt):
 
 
 if __name__ == '__main__':
+    torch.multiprocessing.set_start_method('spawn')
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', help='Where to store logs and models')
     parser.add_argument('--train_data', required=True, help='path to training dataset')

@@ -39,7 +39,7 @@ class CTCLabelConverter(object):
             text = list(t)
             text = [self.dict[char] for char in text]
             batch_text[i][:len(text)] = torch.LongTensor(text)
-        print(f'batch_text: {batch_text}')
+        print(f'batch_text.shape: {batch_text.shape}')
         print(f'length: {length}')
         return (batch_text.to(device), torch.IntTensor(length).to(device))
 
@@ -112,18 +112,27 @@ class AttnLabelConverter(object):
     """ Convert between text-label and text-index """
 
     def __init__(self, character):
+        print(f'AttnLabelConverter().__init__()')
         # character (str): set of the possible characters.
         # [GO] for the start token of the attention decoder. [s] for end-of-sentence token.
         list_token = ['[GO]', '[s]']  # ['[s]','[UNK]','[PAD]','[GO]']
         list_character = list(character)
         self.character = list_token + list_character
 
+        print(f'self.character:{self.character}')
+        print(f'self.character.len:{len(self.character)}')
+
         self.dict = {}
         for i, char in enumerate(self.character):
             # print(i, char)
             self.dict[char] = i
+        
+        print(f'self.dict:{self.dict}')
+        print(f'self.dict.len:{len(self.dict)}')
 
     def encode(self, text, batch_max_length=25):
+        print(f'AttnLabelConverter().__init__()')
+
         """ convert text-label into text-index.
         input:
             text: text labels of each image. [batch_size]
@@ -134,11 +143,17 @@ class AttnLabelConverter(object):
                 text[:, 0] is [GO] token and text is padded with [GO] token after [s] token.
             length : the length of output of attention decoder, which count [s] token also. [3, 7, ....] [batch_size]
         """
+
         length = [len(s) + 1 for s in text]  # +1 for [s] at end of sentence.
         # batch_max_length = max(length) # this is not allowed for multi-gpu setting
         batch_max_length += 1
         # additional +1 for [GO] at first step. batch_text is padded with [GO] token after [s] token.
         batch_text = torch.LongTensor(len(text), batch_max_length + 1).fill_(0)
+
+        print(f'length:{length}')
+        print(f'batch_max_length:{batch_max_length}')
+        print(f'batch_text:{batch_text}')
+
         for i, t in enumerate(text):
             text = list(t)
             text.append('[s]')
@@ -166,7 +181,7 @@ class Averager(object):
     def add(self, v):
         count = v.data.numel()
         v = v.data.sum()
-        self.n_count += count스
+        self.n_count += count
         self.sum += v
 
     def reset(self):
