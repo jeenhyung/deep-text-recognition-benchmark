@@ -124,37 +124,46 @@ def hierarchical_dataset(root, opt, select_data='/'):
     # select_data: ['MJ', 'ST']
     dataset_log += '\n'
 
-    # 폴더 탐색
-    for dirpath, dirnames, filenames in os.walk(root+'/'):
-        print(f'dirpath:{dirpath}, dirnames:{dirnames}, filenames:{filenames}')
+    # # 폴더 탐색
+    # for dirpath, dirnames, filenames in os.walk(root+'/'):
+    #     print(f'dirpath:{dirpath}, dirnames:{dirnames}, filenames:{filenames}')
 
-        if not dirnames:
-            print(f'[not dirnames]')
+    #     if not dirnames:
+    #         print(f'[not dirnames]')
 
-            select_flag = False
+    #         select_flag = False
 
-            # 선텍한 폴더에 진입했을 경우
-            for selected_d in select_data:
-                if selected_d in dirpath:
-                    select_flag = True # 선택 플래그 True
-                    break
+    #         # 선텍한 폴더에 진입했을 경우
+    #         for selected_d in select_data:
+    #             if selected_d in dirpath:
+    #                 select_flag = True # 선택 플래그 True
+    #                 break
             
-            print(f'select_flag:{select_flag}') 
+    #         print(f'select_flag:{select_flag}') 
 
-            if select_flag: # 선택되었다면,
-                print(f'[select_flag is true ]')
+    #         if select_flag: # 선택되었다면,
+    #             print(f'[select_flag is true ]')
 
-                # dataset = LmdbDataset(dirpath, opt) # 데이터셋
+    #             # dataset = LmdbDataset(dirpath, opt) # 데이터셋
             
-                dataset = CustomImageDataset('data/train', opt) # 커스텀 데이터셋
-                raise Exception('spam', 'eggs')
+    #             dataset = CustomImageDataset(dirpath, opt) # 커스텀 데이터셋
+    #             # raise Exception('spam', 'eggs')
 
-                sub_dataset_log = f'sub-directory:\t/{os.path.relpath(dirpath, root)}\t num samples: {len(dataset)}'
-                print(sub_dataset_log)  # sub-directory:  /MJ/MJ_train     num samples: 7224586
-                dataset_log += f'{sub_dataset_log}\n'
+    #             sub_dataset_log = f'sub-directory:\t/{os.path.relpath(dirpath, root)}\t num samples: {len(dataset)}'
+    #             print(sub_dataset_log)  # sub-directory:  /MJ/MJ_train     num samples: 7224586
+    #             dataset_log += f'{sub_dataset_log}\n'
 
-                dataset_list.append(dataset)
+    #             dataset_list.append(dataset)
 
+    dataset = CustomImageDataset(root, opt) # 커스텀 데이터셋
+    # raise Exception('spam', 'eggs')
+
+    sub_dataset_log = f'sub-directory:\t/{os.path.relpath(root, root)}\t num samples: {len(dataset)}'
+    print(sub_dataset_log)  # sub-directory:  /MJ/MJ_train     num samples: 7224586
+    dataset_log += f'{sub_dataset_log}\n'
+
+    dataset_list.append(dataset)
+    
     concatenated_dataset = ConcatDataset(dataset_list)
     
     return concatenated_dataset, dataset_log # 연결된데이터셋, 기록용 로그
@@ -274,27 +283,37 @@ class CustomImageDataset(Dataset):
         print(f'my_data.shape:{my_data.shape}')     # (60000, 2)
         
         for image_name, image_label in my_data:
-            
-            
+            print(f'image_name:{image_name}, image_label:{image_label}')
 
-        class_names = os.walk(self.data_set_path).__next__()[1] # 폴더명이 클래스네임으로 예시 ['test', 'train', 'val']
+            label = image_label
+            img_file = os.path.join(self.data_set_path, image_name)
+            print(f'img_file:{img_file}')
 
-        print(f'class_names:{class_names}')
-        raise Exception('spam', 'eggs')
+            img = Image.open(img_file)
+            if img is not None:
+                all_img_files.append(img_file)
+                all_labels.append(label)
 
-        for index, class_name in enumerate(class_names):
-            label = index
-            img_dir = os.path.join(self.data_set_path, class_name)
-            img_files = os.walk(img_dir).__next__()[2]
+            # raise Exception('spam', 'eggs')    
 
-            for img_file in img_files:
-                img_file = os.path.join(img_dir, img_file)
-                img = Image.open(img_file)
-                if img is not None:
-                    all_img_files.append(img_file)
-                    all_labels.append(label)
+        # class_names = os.walk(self.data_set_path).__next__()[1] # 폴더명이 클래스네임으로 예시 ['test', 'train', 'val']
 
-        return all_img_files, all_labels, len(all_img_files), len(class_names)
+        # print(f'class_names:{class_names}')
+        
+
+        # for index, class_name in enumerate(class_names):
+        #     label = index
+        #     img_dir = os.path.join(self.data_set_path, class_name)
+        #     img_files = os.walk(img_dir).__next__()[2]
+
+        #     for img_file in img_files:
+        #         img_file = os.path.join(img_dir, img_file)
+        #         img = Image.open(img_file)
+        #         if img is not None:
+        #             all_img_files.append(img_file)
+        #             all_labels.append(label)
+
+        return all_img_files, all_labels, len(all_img_files), 3 #  len(class_names)
 
     def __init__(self, data_set_path, opt, transforms=None):
         print(f'CustomImageDataset().__init__(data_set_path:{data_set_path}, transforms:{transforms})')
@@ -311,7 +330,7 @@ class CustomImageDataset(Dataset):
         if self.transforms is not None:
             image = self.transforms(image)
 
-        return {'image': image, 'label': self.labels[index]}
+        return (image, self.labels[index])
 
     def __len__(self):
         return self.length

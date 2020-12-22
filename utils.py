@@ -20,8 +20,8 @@ class CTCLabelConverter(object):
         self.character = ['[CTCblank]'] + dict_character  # dummy '[CTCblank]' token for CTCLoss (index 0)
         print(f'self.character: {self.character}')
 
-    def encode(self, text, batch_max_length=25):
-        print(f'CTCLabelConverter.encode(text:{text}, batch_max_length:{batch_max_length})')
+    def encode(self, text, batch_max_length=44):
+        print(f'CTCLabelConverter.encode(text:{text}, batch_max_length:{batch_max_length})') # batch_max_length:25
         """convert text-label into text-index.
         input:
             text: text labels of each image. [batch_size]
