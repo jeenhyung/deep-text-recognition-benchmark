@@ -144,9 +144,8 @@ def hierarchical_dataset(root, opt, select_data='/'):
     #         if select_flag: # 선택되었다면,
     #             print(f'[select_flag is true ]')
 
-    #             # dataset = LmdbDataset(dirpath, opt) # 데이터셋
+    #             dataset = LmdbDataset(dirpath, opt) # 데이터셋
             
-    #             dataset = CustomImageDataset(dirpath, opt) # 커스텀 데이터셋
     #             # raise Exception('spam', 'eggs')
 
     #             sub_dataset_log = f'sub-directory:\t/{os.path.relpath(dirpath, root)}\t num samples: {len(dataset)}'
@@ -154,6 +153,8 @@ def hierarchical_dataset(root, opt, select_data='/'):
     #             dataset_log += f'{sub_dataset_log}\n'
 
     #             dataset_list.append(dataset)
+
+
 
     dataset = CustomImageDataset(root, opt) # 커스텀 데이터셋
     # raise Exception('spam', 'eggs')
@@ -164,8 +165,9 @@ def hierarchical_dataset(root, opt, select_data='/'):
 
     dataset_list.append(dataset)
     
+
     concatenated_dataset = ConcatDataset(dataset_list)
-    
+
     return concatenated_dataset, dataset_log # 연결된데이터셋, 기록용 로그
 
 
@@ -278,9 +280,9 @@ class CustomImageDataset(Dataset):
         all_labels = []
 
         my_data = genfromtxt(f'{self.data_set_path}/labels.txt', dtype=None, delimiter=',')
-        print(f'my_data:{my_data}')
-        print(f'my_data.type:{type(my_data)}')   # <class 'numpy.ndarray'>
-        print(f'my_data.shape:{my_data.shape}')     # (60000, 2)
+        # print(f'my_data:{my_data}')
+        # print(f'my_data.type:{type(my_data)}')   # <class 'numpy.ndarray'>
+        # print(f'my_data.shape:{my_data.shape}')     # (60000, 2)
         
         for image_name, image_label in my_data:
             print(f'image_name:{image_name}, image_label:{image_label}')
@@ -317,7 +319,7 @@ class CustomImageDataset(Dataset):
 
     def __init__(self, data_set_path, opt, transforms=None):
         print(f'CustomImageDataset().__init__(data_set_path:{data_set_path}, transforms:{transforms})')
-        self.data_set_path = data_set_path  # 'data/training'
+        self.data_set_path = data_set_path  # 'data/train'
         self.opt = opt
         self.image_files_path, self.labels, self.length, self.num_classes = self.read_data_set(self.opt)
         self.transforms = transforms
@@ -325,7 +327,8 @@ class CustomImageDataset(Dataset):
 
     def __getitem__(self, index):
         image = Image.open(self.image_files_path[index])
-        image = image.convert("RGB")
+        image = image.convert('L')
+        # image = image.convert("RGB")
 
         if self.transforms is not None:
             image = self.transforms(image)
@@ -383,7 +386,7 @@ class ResizeNormalize(object):
         self.toTensor = transforms.ToTensor()
 
     def __call__(self, img):
-        print(f'ResizeNormalize().__call__(img:{img})')
+        # print(f'ResizeNormalize().__call__(img:{img})')
         img = img.resize(self.size, self.interpolation)
         img = self.toTensor(img)
         img.sub_(0.5).div_(0.5)
@@ -419,13 +422,13 @@ class AlignCollate(object):
         self.keep_ratio_with_pad = keep_ratio_with_pad
 
     def __call__(self, batch):
-        print(f'AlignCollate __call__(batch:{batch}')
+        # print(f'AlignCollate __call__(batch:{batch}')
         batch = filter(lambda x: x is not None, batch) # batch 원소 하나씩 x에 대입 후 None이 아닌 것들만 추출.
         
         # zip(이터러블): 동일한 개수로 이루어진 자료형을 묶어주는 역할, [1,2],[3,4] => [(1,3), (2,4)]
         images, labels = zip(*batch) # 
-        print(f'images.length:{len(images)}') # 96
-        print(f'labels.length:{len(labels)}') # 96
+        # print(f'images.length:{len(images)}') # 96
+        # print(f'labels.length:{len(labels)}') # 96
 
         if self.keep_ratio_with_pad:  # same concept with 'Rosetta' paper
             resized_max_w = self.imgW

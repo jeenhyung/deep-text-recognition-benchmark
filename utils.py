@@ -20,8 +20,8 @@ class CTCLabelConverter(object):
         self.character = ['[CTCblank]'] + dict_character  # dummy '[CTCblank]' token for CTCLoss (index 0)
         print(f'self.character: {self.character}')
 
-    def encode(self, text, batch_max_length=44):
-        print(f'CTCLabelConverter.encode(text:{text}, batch_max_length:{batch_max_length})') # batch_max_length:25
+    def encode(self, text, batch_max_length=25):
+        # print(f'CTCLabelConverter.encode(text:{text}, batch_max_length:{batch_max_length})') # batch_max_length:25
         """convert text-label into text-index.
         input:
             text: text labels of each image. [batch_size]
@@ -39,8 +39,9 @@ class CTCLabelConverter(object):
             text = list(t)
             text = [self.dict[char] for char in text]
             batch_text[i][:len(text)] = torch.LongTensor(text)
-        print(f'batch_text.shape: {batch_text.shape}')
-        print(f'length: {length}')
+        # print(f'batch_text.shape: {batch_text.shape}') # [64, 192]
+        # print(f'length: {length}')  # [44, 44, 44, 44, 46, 47, 42, 36, 49, 39, 41, 40, 51, 37, 44, 44, 44, 44, 43, 34, 38, 50, 41, 40, 45, 42, 38, 43, 39, 45, 47, 42, 52, 45, 41, 44, 39, 46, 42, 48, 42, 46, 43, 50, 43, 38, 53, 43, 42, 43, 41, 43, 43, 45, 45, 41, 49, 45, 48, 46, 43, 44, 45, 49]
+        # [1, 4, 3, 6, 3, 4, 3, 3, 4, 2, 4, 2, 4, 3, 1, 2, 3, 2, 4, 2, 3, 2, 3, 2, 4, 3, 6, 3, 3, 6, 3, 3, 3, 2, 2, 2, 3, 4, 2, 2, 4, 2, 3, 2, 3, 5, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 3, 4, 2, 2]
         return (batch_text.to(device), torch.IntTensor(length).to(device))
 
     def decode(self, text_index, length):
